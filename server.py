@@ -12,7 +12,7 @@ Email: hangli_work@163.com
 Date: 2024-09-23
 Description:
     本脚本用于接收含光门遗址的风速（平均风速，风向）和土壤（湿度，温度）数据，
-    并将数据存储在数据库hanguang中
+    并将数据存储在数据库sensor_test中
 """
 
 # 配置日志
@@ -30,7 +30,7 @@ DB_CONFIG = {
 # 监听端口
 LISTEN_PORT = 59666
 # 超时时间（秒）
-TIMEOUT_DURATION = 10
+TIMEOUT_DURATION = 1800
 SOIL_DATA_LENGTH = 23  # 土壤数据长度
 WIND_DATA_LENGTH = 22  # 风速数据长度
 RAIN_DATA_LENGTH = 26  # 雨量数据长度
@@ -193,8 +193,99 @@ def process_received_data(data, connection_socket):
             finally:
                 conn.close()
 
-        # 土壤数据（不完善，暂不考虑）
+        # 雨量数据
         elif sensor_type == '02':
+            logging.info("Process rainfall data...")
+            # 检查数据长度是否符合要求
+            if len(hex_values) != RAIN_DATA_LENGTH + 1:  # 根据实际数据结构调整这个值
+                logging.warning("Invalid data length: Expected %d elements, got %d elements", RAIN_DATA_LENGTH,
+                                len(hex_values))
+                return  # 丢弃这条数据
+
+            gateway_address = hex_values[3]
+            terminal_address = int(hex_values[4], 16)
+            sensor_address = int(hex_values[5], 16)
+            data_length = int(hex_values[6], 16)
+
+            average_per_minute = ieee754_binary32_to_float(hex_values_to_binary(hex_values, 7, 10))
+            average_per_hour = ieee754_binary32_to_float(hex_values_to_binary(hex_values, 11, 14))
+            average_per_day = ieee754_binary32_to_float(hex_values_to_binary(hex_values, 15, 18))
+            total = ieee754_binary32_to_float(hex_values_to_binary(hex_values, 19, 22))
+            battery = int(hex_values[23], 16)
+            status = int(hex_values[24], 16)
+            checksum = int(hex_values[25], 16)
+            frame_tail = hex_values[26]
+
+            # 检查帧尾是否正常
+            if frame_tail != '21':
+                logging.warning("Invalid frame tail: %s", data)
+                return
+
+            # 获取当前时间戳
+            unix_timestamp = int(time.time())
+
+            formatted_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 确定插入的表名
+            table_name = f"rainfall{terminal_address:02d}{sensor_address:02d}"
+
+            conn = create_database_connection()
+            try:
+                with conn.cursor() as cursor:
+                    # 检查表是否存在
+                    cursor.execute(f"SHOW TABLES LIKE '{table_name}'")
+                    result = cursor.fetchone()
+
+                    if result is None:
+                        logging.warning(f"Table '{table_name}' does not exist. Creating table...")
+
+                        cursor.execute("SET FOREIGN_KEY_CHECKS=0;")
+                        cursor.execute(f"DROP TABLE IF EXISTS `{table_name}`;")
+
+                        create_table_query = (
+                            f"CREATE TABLE `{table_name}` (\n"
+                            f"  `id` varchar(255) NOT NULL,\n"
+                            f"  `datetime` datetime DEFAULT NULL,\n"
+                            f"  `avg_per_minute` double DEFAULT NULL,\n"
+                            f"  `avg_per_hour` double DEFAULT NULL,\n"
+                            f"  `avg_per_day` double DEFAULT NULL,\n"
+                            f"  `total` double DEFAULT NULL,\n"
+                            f"  `battery` float DEFAULT NULL,\n"
+                            f"  `status` tinyint(4) DEFAULT NULL,\n"
+                            f"  PRIMARY KEY (`id`)\n"
+                            f") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+                        )
+                        cursor.execute(create_table_query)
+                        conn.commit()
+                        logging.info(f"Table '{table_name}' created successfully.")
+
+                    # 插入数据
+                    insert_query = (
+                        f"INSERT INTO `{table_name}` "
+                        "(id, datetime, avg_per_minute, avg_per_hour, "
+                        "avg_per_day, total, battery, status) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+                    )
+                    cursor.execute(insert_query, (
+                        str(unix_timestamp), formatted_datetime,
+                        f"{float(average_per_minute):.2f}",
+                        f"{float(average_per_hour):.2f}",
+                        f"{float(average_per_day):.2f}",
+                        f"{float(total):.2f}",
+                        battery, status
+                    ))
+                    conn.commit()
+                    logging.info(f"Data inserted into table '{table_name}' successfully.")
+            except Exception as e:
+                logging.error(f"Unexpected error: {e}")
+            finally:
+                conn.close()
+
+
+
+        # 土壤数据（不完善，暂不考虑）
+        elif sensor_type == '03':
+            logging.info("Process soil data...")
             gateway_address = hex_values[3]
             terminal_address = hex_values[4]
 
@@ -216,45 +307,6 @@ def process_received_data(data, connection_socket):
             frame_tail = hex_values[23]
 
             return
-
-        # 雨量数据
-        elif sensor_type == '03':
-            # 检查数据长度是否符合要求
-            if len(hex_values) != RAIN_DATA_LENGTH + 1:  # 根据实际数据结构调整这个值
-                logging.warning("Invalid data length: Expected %d elements, got %d elements", RAIN_DATA_LENGTH,
-                                len(hex_values))
-                return  # 丢弃这条数据
-
-            gateway_address = hex_values[3]
-            terminal_address = int(hex_values[4], 16)
-            sensor_address = int(hex_values[5], 16)
-            data_length = int(hex_values[6], 16)
-
-            average_rainfall_per_minute = ieee754_binary32_to_float(hex_values_to_binary(hex_values, 7, 10))
-            average_rainfall_per_hour = ieee754_binary32_to_float(hex_values_to_binary(hex_values, 11, 14))
-            average_rainfall_per_day = ieee754_binary32_to_float(hex_values_to_binary(hex_values, 15, 18))
-            total_rainfall = ieee754_binary32_to_float(hex_values_to_binary(hex_values, 19, 22))
-            battery = int(hex_values[23], 16)
-            status = int(hex_values[24], 16)
-            checksum = int(hex_values[25], 16)
-            frame_tail = hex_values[26]
-
-            # 检查帧尾是否正常
-            if frame_tail != '21':
-                logging.warning("Invalid frame tail: %s", data)
-                return
-
-            print(
-                f"Gateway Address: {gateway_address}, "
-                f"Terminal Address: {terminal_address}, "
-                f"Sensor Address: {sensor_address}, "
-                f"Data Length: {data_length}, "
-                f"Average Rainfall per Minute: {average_rainfall_per_minute}, "
-                f"Average Rainfall per Hour: {average_rainfall_per_hour}, "
-                f"Average Rainfall per Day: {average_rainfall_per_day}, "
-                f"Total Rainfall: {total_rainfall}, Battery: {battery}, "
-                f"Status: {status}, Checksum: {checksum}, "
-                f"Frame Tail: {frame_tail}")
 
 
         else:

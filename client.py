@@ -56,10 +56,10 @@ def send_wind_data(client_socket):
 
 
 def send_rainfall_data(client_socket):
-    hex_data = '2303567890abcdef1234567890abcdef1234567890abcdef1221'
+    hex_data = '23 02 00 00 01 15 00 00 00 00 00 00 00 00 00 00 00 00 3d 2c 08 30 64 01 ff 21'
 
     # 将16进制字符串转换为字节序列
-    byte_data = binascii.unhexlify(hex_data)
+    byte_data = binascii.unhexlify(hex_data.replace(' ', ''))
 
     # 发送字节序列
     client_socket.sendall(byte_data)
