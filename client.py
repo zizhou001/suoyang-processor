@@ -38,21 +38,21 @@ def send_wind_data(client_socket):
 
         # 格式化为16进制字符串
         hex_data = (
-            f"23 {sensor_type} {gateway_address} {terminal_address} "
-            f"{sensor_address:02X} {data_length:02X} "
-            f"{avg_speed_3s // 100:02X} {avg_speed_3s % 100:02X} "
-            f"{wind_direction_3s // 100:02X} {wind_direction_3s % 100:02X} "
-            f"{avg_speed_2min // 100:02X} {avg_speed_2min % 100:02X} "
-            f"{wind_direction_2min // 100:02X} {wind_direction_2min % 100:02X} "
-            f"{avg_speed_10min // 100:02X} {avg_speed_10min % 100:02X} "
-            f"{wind_direction_10min // 100:02X} {wind_direction_10min % 100:02X} "
-            f"{device_battery:02X} {device_status:02X} "
-            "00 21"  # 校验和和帧尾
+            f"23{sensor_type}{gateway_address}{terminal_address}"
+            f"{sensor_address:02X}{data_length:02X}"
+            f"{avg_speed_3s // 100:02X}{avg_speed_3s % 100:02X}"
+            f"{wind_direction_3s // 100:02X}{wind_direction_3s % 100:02X}"
+            f"{avg_speed_2min // 100:02X}{avg_speed_2min % 100:02X}"
+            f"{wind_direction_2min // 100:02X}{wind_direction_2min % 100:02X}"
+            f"{avg_speed_10min // 100:02X}{avg_speed_10min % 100:02X}"
+            f"{wind_direction_10min // 100:02X}{wind_direction_10min % 100:02X}"
+            f"{device_battery:02X}{device_status:02X}"
+            "0021"  # 校验和和帧尾
         )
 
-        print(f"Sending: {hex_data}")
-        client_socket.sendall(hex_data.encode())
-        time.sleep(5)  # 每5秒发送一次数据
+        print(f"Sending: {hex_data}, length:{len(hex_data)}")
+        client_socket.sendall(binascii.unhexlify(hex_data))
+        time.sleep(10)  # 每5秒发送一次数据
 
 
 def send_rainfall_data(client_socket):
@@ -70,6 +70,7 @@ def main():
     client_socket = create_client_socket()
     try:
         send_rainfall_data(client_socket)
+        # send_wind_data(client_socket)
     except KeyboardInterrupt:
         print("Client stopped.")
     finally:

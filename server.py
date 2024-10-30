@@ -23,8 +23,8 @@ DB_CONFIG = {
     'host': 'localhost',
     'port': 3306,
     'user': 'root',
-    'password': 'Xt12345678.',
-    'database': 'hanguang'
+    'password': 'Hanguang@911',
+    'database': 'sensor_test'
 }
 
 # 监听端口
